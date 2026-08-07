@@ -18,7 +18,7 @@
     background:#fff; padding:15px; border-radius:8px;
     box-shadow:0 2px 4px rgba(0,0,0,0.05);
     flex:1;
-    min-width: 0; /* ←スマホ崩れ防止 */
+    min-width: 0;
   }
   .control-title{ font-size:1rem; font-weight:bold; margin-bottom:10px; color:#555; }
 
@@ -28,6 +28,15 @@
     padding:8px 10px; font-size:1rem;
     border:1px solid #ccc; border-radius:4px;
   }
+  select{
+    width:100%;
+    padding:8px 10px; font-size:1rem;
+    border:1px solid #ccc; border-radius:4px;
+    background:#fff;
+    box-sizing:border-box;
+  }
+  .select-row{ margin-top:10px; }
+
   button{
     padding:8px 15px; font-size:1rem; cursor:pointer;
     border:1px solid #ccc; background-color:#f9f9f9; border-radius:4px;
@@ -50,20 +59,18 @@
     padding:10px;
     border-radius:8px;
     box-shadow:0 2px 4px rgba(0,0,0,0.05);
-    overflow: hidden; /* ←スクロールはパンで行うので hidden 推奨 */
+    overflow: hidden;
   }
 
-  /* ビューポート（見える範囲） */
   #map-container{
     position:relative;
     width:100%;
     max-width:100%;
     user-select:none;
     -webkit-user-select:none;
-    touch-action:none; /* ←ブラウザ標準スクロール/ピンチを止めて自前制御 */
+    touch-action:none;
   }
 
-  /* 画像＋棚＋selection-box をまとめるコンテナ（これを transform で拡大/移動） */
   #map-inner{
     position:relative;
     display:inline-block;
@@ -75,7 +82,7 @@
     display:block;
     width:100%;
     height:auto;
-    min-width:0; /* ←縦画面崩れの主因を排除 */
+    min-width:0;
     border:1px solid #ddd;
     background:#eee;
   }
@@ -141,12 +148,21 @@
   <div class="controls-container">
     <div class="control-panel">
       <div class="control-title">収納物検索</div>
+
       <div class="search-row">
         <input type="text" id="search-input" placeholder="例：カラーコーン">
         <button id="btn-search">検索</button>
         <button id="btn-reset">リセット</button>
       </div>
       <div class="helper-text">カタカナは全角、英字は半角で入力してください。</div>
+
+      <!-- 追加：リスト選択 -->
+      <div class="select-row">
+        <div class="helper-text" style="margin-top:10px;">リストから選択しても対象範囲を赤くできます。</div>
+        <select id="item-select">
+          <option value="">（リストから選択）</option>
+        </select>
+      </div>
     </div>
 
     <div class="control-panel">
@@ -162,7 +178,6 @@
   <div class="map-wrapper">
     <div id="map-container">
       <div id="map-inner">
-        <!-- GitHub Pages などで同じ階層に置く想定 -->
         <img src="./souko_m.jpg" id="bg-img" alt="倉庫図面" />
         <div id="selection-box"></div>
       </div>
@@ -235,6 +250,7 @@ const coordArea = document.getElementById('coord-area');
 const searchInput = document.getElementById('search-input');
 const btnSearch = document.getElementById('btn-search');
 const btnReset = document.getElementById('btn-reset');
+const itemSelect = document.getElementById('item-select');
 
 function escapeRegExp(string){
   return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -265,7 +281,7 @@ function localPointFromClient(clientX, clientY){
 
 const pointers = new Map();
 let gesture = {
-  mode: null, // "pan" | "pinch"
+  mode: null,
   startX: 0, startY: 0,
   startViewX: 0, startViewY: 0,
   startDist: 0,
@@ -331,7 +347,6 @@ mapContainer.addEventListener('pointermove', (e) => {
     const cy = gesture.centerLocal.y;
     const scaleRatio = newScale / before;
 
-    // ピンチ中心を固定する補正
     view.x = cx - (cx - view.x) * scaleRatio;
     view.y = cy - (cy - view.y) * scaleRatio;
     view.scale = newScale;
@@ -349,7 +364,6 @@ mapContainer.addEventListener('pointercancel', (e) => {
   if (pointers.size === 0) gesture.mode = null;
 });
 
-// PCホイールズーム（任意）
 mapContainer.addEventListener('wheel', (e) => {
   if (isCoordMode) return;
   e.preventDefault();
@@ -405,7 +419,6 @@ shelfData.forEach(shelf => {
   el.style.width = shelf.width + "%";
   el.style.height = shelf.height + "%";
 
-  // PC hover
   el.addEventListener('mouseenter', () => {
     tooltip.innerHTML = buildTooltipHtml(shelf.items);
     tooltip.style.display = 'block';
@@ -418,10 +431,9 @@ shelfData.forEach(shelf => {
     if (activeShelfEl !== el) tooltip.style.display = 'none';
   });
 
-  // スマホ tap toggle（パン/ズーム中は無視）
   el.addEventListener('pointerdown', (e) => {
     if (isCoordMode) return;
-    if (gesture.moved) return; // ←パン/ピンチ操作後はタップ扱いにしない
+    if (gesture.moved) return;
 
     e.preventDefault();
     e.stopPropagation();
@@ -438,28 +450,100 @@ shelfData.forEach(shelf => {
     showTooltipAt(pageX, pageY, shelf.items);
   }, { passive:false });
 
-  mapInner.appendChild(el); // ←innerに載せる（ズーム/パンに追従）
+  mapInner.appendChild(el);
   shelfElements.push({ data: shelf, element: el });
 });
 
-function performSearch(){
-  const keyword = searchInput.value.trim();
-  if (!keyword){ resetSearch(); return; }
+/* =========================
+   追加：リスト作成（棚データから物品名候補を抽出）
+   - 「1段目: ...」の「...」を取り出し
+   - 「、」「,」で分割
+   - かっこ書きは削除（例：矢印板(矢印看板) → 矢印板）
+   ========================= */
+function normalizeItemName(name){
+  return name
+    .replace(/（[^）]*）/g, '')
+    .replace(/$$[^)]*$$/g, '')
+    .replace(/：/g, ':')
+    .trim();
+}
+
+function extractItemCandidates(){
+  const set = new Set();
+
+  shelfData.forEach(shelf => {
+    shelf.items.forEach(line => {
+      let s = String(line);
+
+      // "1段目: xxx" の "xxx" を優先（なければ全文）
+      if (s.includes(':')) s = s.split(':').slice(1).join(':');
+
+      // 分割（全角/半角カンマ）
+      s.split(/[、,]/g).forEach(part => {
+        const n = normalizeItemName(part);
+        if (!n) return;
+        set.add(n);
+      });
+    });
+  });
+
+  return Array.from(set).sort((a,b) => a.localeCompare(b, 'ja'));
+}
+
+function populateItemSelect(){
+  const items = extractItemCandidates();
+  items.forEach(name => {
+    const opt = document.createElement('option');
+    opt.value = name;
+    opt.textContent = name;
+    itemSelect.appendChild(opt);
+  });
+}
+populateItemSelect();
+
+/* =========================
+   検索/ハイライト（検索欄とリスト選択で共通化）
+   ========================= */
+function highlightByKeyword(keyword){
+  const k = (keyword ?? '').trim();
+
+  if (!k){
+    shelfElements.forEach(item => item.element.classList.remove('highlight-red'));
+    return;
+  }
 
   shelfElements.forEach(item => {
-    const hit = item.data.items.some(text => text.includes(keyword));
+    const hit = item.data.items.some(text => String(text).includes(k));
     if (hit) item.element.classList.add('highlight-red');
     else item.element.classList.remove('highlight-red');
   });
 }
+
+function performSearch(){
+  const keyword = searchInput.value.trim();
+  if (!keyword){ resetSearch(); return; }
+  // 入力検索したら、リスト側は未選択に戻す（競合防止）
+  itemSelect.value = "";
+  highlightByKeyword(keyword);
+}
+
 function resetSearch(){
   searchInput.value = '';
-  shelfElements.forEach(item => item.element.classList.remove('highlight-red'));
+  itemSelect.value = '';
+  highlightByKeyword('');
 }
 
 btnSearch.addEventListener('click', performSearch);
 searchInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') performSearch(); });
 btnReset.addEventListener('click', resetSearch);
+
+// 追加：リストから選択 → 対象棚を赤く
+itemSelect.addEventListener('change', () => {
+  const v = itemSelect.value;
+  // リストで選んだものは検索欄にも反映（ツールチップの赤文字強調にも効く）
+  searchInput.value = v;
+  highlightByKeyword(v);
+});
 
 /* =========================
    座標取得（※ON時に等倍に戻す運用）
@@ -472,7 +556,6 @@ btnCoordMode.addEventListener('click', function(){
   isCoordMode = !isCoordMode;
 
   if (isCoordMode){
-    // 座標取得は等倍前提（ズレ防止のためON時にリセット）
     view = { x: 0, y: 0, scale: 1 };
     applyTransform();
 
@@ -493,7 +576,6 @@ btnCoordMode.addEventListener('click', function(){
   }
 });
 
-// 座標取得は mapInner 上でやる（画像と同じ座標系）
 mapInner.addEventListener('mousedown', function(e){
   if (!isCoordMode) return;
   e.preventDefault();
