@@ -191,21 +191,8 @@
    棚データ（そのまま）
    ========================= */
 const shelfData = [
-  { top: 16.59, left: 51.63, width: 6.38, height: 14.04,
-    items: [
-      "1段目: 矢印板(矢印看板)、スポットクーラー、扇風機",
-      "2段目: 送風機、送風マスク、排水ポンプ、小型エアコン",
-      "3段目: ロープ、トンバッグ"
-    ]
-  },
-  { top: 16.59, left: 45.41, width: 6.38, height: 14.04,
-    items: [
-      "1段目: カラーコーン、MAKITA一輪車、テーブル",
-      "2段目: 矢印板(矢印看板)、旗、コーン用ライト、ゴムマット、誘導棒",
-      "3段目: LEDチューブライト、安全掲示板",
-      "4段目: 養生シート(青)"
-    ]
-  },
+  { top: 16.59, left: 51.63, width: 6.38, height: 14.04, items: ["1段目: 矢印板(矢印看板)、スポットクーラー、扇風機","2段目: 送風機、送風マスク、排水ポンプ、小型エアコン","3段目: ロープ、トンバッグ"] },
+  { top: 16.59, left: 45.41, width: 6.38, height: 14.04, items: ["1段目: カラーコーン、MAKITA一輪車、テーブル","2段目: 矢印板(矢印看板)、旗、コーン用ライト、ゴムマット、誘導棒","3段目: LEDチューブライト、安全掲示板","4段目: 養生シート(青)"] },
   { top: 25.79, left: 16.33, width: 3.58, height: 6.66, items: ["雨具、防寒具掛け"] },
   { top: 16.22, left: 15.86, width: 16.33, height: 3.03, items: ["雨具、防寒具掛け"] },
   { top: 29.42, left: 20.06, width: 12.60, height: 2.66, items: ["1段目: チェンソー","2段目: 電動工具"] },
@@ -491,7 +478,17 @@ function extractItemCandidates(){
 }
 
 function populateItemSelect(){
-  const items = extractItemCandidates();
+  const items = [
+    "カラーコーン",
+    "矢印板",
+    "スポットクーラー",
+    "扇風機",
+    "養生シート",
+    "LEDライト",
+    "長尺物",
+    "送風機"
+    // 必要に応じてアイテム追加
+  ];
   items.forEach(name => {
     const opt = document.createElement('option');
     opt.value = name;
