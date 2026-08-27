@@ -63,12 +63,9 @@ textarea{
 
 .map-wrapper{ background:var(--card); padding:10px; border-radius:8px; box-shadow:var(--shadow); overflow:hidden; }
 #map-container{
-  position:relative; width:100%; max-width:100%;
-  user-select:none; -webkit-user-select:none;
-  /* スマホのピンチ開始を殺さない */
-  touch-action: none;
-  text-align:center;
+  touch-action: pan-y pinch-zoom;
 }
+
 #map-inner{ position:relative; display:inline-block; transform-origin:0 0; will-change:transform; }
 #bg-img{
   display:block; width:100%; height:auto; border:1px solid #ddd; background:#eee;
@@ -251,86 +248,138 @@ const TAP_MOVE_THRESHOLD = 6;
 let isCoordMode = false;
 
 /* ★修正版：等倍でも pointer を拾い、2本指ピンチを必ず開始できる */
+function setMapTouchAction(){
+  // 等倍ならページスクロール優先、拡大中なら図面操作優先
+  mapContainer.style.touchAction = (view.scale > 1.0001) ? 'none' : 'pan-y pinch-zoom';
+}
+
+setMapTouchAction();
+
+/* 重要：等倍は1本指を“取らない”。2本指が来たらピンチ開始 */
 mapContainer.addEventListener('pointerdown', (e) => {
   if (isCoordMode) return;
 
-  // 図面上の操作は常にページ側に渡さない（スクロール・ピンチズーム等を抑止）
-  e.preventDefault();
-
   pointers.set(e.pointerId, e);
-  mapContainer.setPointerCapture(e.pointerId);
 
-  if (pointers.size === 1){
-    gesture.mode = "pan";
-    gesture.startX = e.clientX;
-    gesture.startY = e.clientY;
-    gesture.startViewX = view.x;
-    gesture.startViewY = view.y;
-    gesture.moved = false;
-    return;
-  }
+  const isTouchLike = (e.pointerType === 'touch' || e.pointerType === 'pen');
 
+  // 2本指が揃ったら：図面ピンチを開始（ページ側の動作を止める）
   if (pointers.size === 2){
-    const arr = Array.from(pointers.values());
+    e.preventDefault();
+    setMapTouchAction();            // この時点ではまだ1xかもだが、ピンチ中は止めたい
+    mapContainer.style.touchAction = 'none';
+
+    mapContainer.setPointerCapture(e.pointerId);
+
+    const [p0, p1] = [...pointers.values()];
     gesture.mode = "pinch";
-    gesture.startDist = dist(arr[0], arr[1]);
+    gesture.startDist = dist(p0, p1);
     gesture.startScale = view.scale;
     gesture.moved = false;
 
-    const cx = (arr[0].clientX + arr[1].clientX) / 2;
-    const cy = (arr[0].clientY + arr[1].clientY) / 2;
+    const cx = (p0.clientX + p1.clientX) / 2;
+    const cy = (p0.clientY + p1.clientY) / 2;
     gesture.centerLocal = localPointFromClient(cx, cy);
+    return;
   }
+
+  // 1本指：
+  // - 等倍(1x) かつ タッチ：ページスクロール優先（preventDefaultしない / captureしない）
+  // - 拡大中(>1x) または マウス：図面パン優先（preventDefault + capture）
+  const shouldPanMap = (!isTouchLike) || (view.scale > 1.0001);
+
+  if (!shouldPanMap) {
+    setMapTouchAction(); // pan-y pinch-zoom のまま
+    return;
+  }
+
+  e.preventDefault();
+  setMapTouchAction(); // >1xなら none になる
+  mapContainer.setPointerCapture(e.pointerId);
+
+  gesture.mode = "pan";
+  gesture.startX = e.clientX;
+  gesture.startY = e.clientY;
+  gesture.startViewX = view.x;
+  gesture.startViewY = view.y;
+  gesture.moved = false;
 }, { passive:false, capture:true });
 
 mapContainer.addEventListener('pointermove', (e) => {
   if (isCoordMode || !pointers.has(e.pointerId)) return;
   pointers.set(e.pointerId, e);
 
-  if (pointers.size === 1 && gesture.mode === "pan"){
-    const dx = e.clientX - gesture.startX;
-    const dy = e.clientY - gesture.startY;
-    if (Math.abs(dx) + Math.abs(dy) > TAP_MOVE_THRESHOLD) gesture.moved = true;
-    view.x = gesture.startViewX + dx;
-    view.y = gesture.startViewY + dy;
-    applyTransform();
-    return;
-  }
-
+  // ピンチ
   if (pointers.size === 2 && gesture.mode === "pinch"){
-    const [p0,p1] = [...pointers.values()];
-    const d = dist(p0,p1);
+    e.preventDefault();
+
+    const [p0, p1] = [...pointers.values()];
+    const d = dist(p0, p1);
     if (d <= 0) return;
 
     const before = view.scale;
     const newScale = clamp(gesture.startScale * (d / gesture.startDist), MIN_SCALE, MAX_SCALE);
-    if (Math.abs(newScale - before) > 0.001) gesture.moved = true;
 
     const { x:cx, y:cy } = gesture.centerLocal;
     const ratio = newScale / before;
+
     view.x = cx - (cx - view.x) * ratio;
     view.y = cy - (cy - view.y) * ratio;
     view.scale = newScale;
+
+    applyTransform();
+    setMapTouchAction(); // ここで >1x になったら以降は図面優先に切替
+    return;
+  }
+
+  // パン（※拡大中のみ）
+  if (pointers.size === 1 && gesture.mode === "pan"){
+    e.preventDefault();
+
+    const dx = e.clientX - gesture.startX;
+    const dy = e.clientY - gesture.startY;
+    if (Math.abs(dx) + Math.abs(dy) > TAP_MOVE_THRESHOLD) gesture.moved = true;
+
+    view.x = gesture.startViewX + dx;
+    view.y = gesture.startViewY + dy;
     applyTransform();
   }
 }, { passive:false, capture:true });
 
-/* ★修正版：指が全部離れたら touch-action を戻す */
-mapContainer.addEventListener('pointerup', (e) => {
+function endPointer(e){
   pointers.delete(e.pointerId);
-  if (pointers.size === 0){
-    gesture.mode = null;
-    mapContainer.style.touchAction = 'pan-y pinch-zoom';
-  }
-}, { passive:false, capture:true });
 
-mapContainer.addEventListener('pointercancel', (e) => {
-  pointers.delete(e.pointerId);
+  // ピンチが終わって指が1本残った場合：
+  // 拡大中なら、そのままドラッグでパンできるように pan モードへ移行
+  if (pointers.size === 1){
+    const remain = [...pointers.values()][0];
+    if (view.scale > 1.0001){
+      gesture.mode = "pan";
+      gesture.startX = remain.clientX;
+      gesture.startY = remain.clientY;
+      gesture.startViewX = view.x;
+      gesture.startViewY = view.y;
+      gesture.moved = false;
+
+      // 残った指をキャプチャして、スクロールに取られないようにする
+      try { mapContainer.setPointerCapture(remain.pointerId); } catch(_) {}
+      mapContainer.style.touchAction = 'none';
+    } else {
+      // 等倍に戻ってるならスクロール優先
+      gesture.mode = null;
+      setMapTouchAction();
+    }
+    return;
+  }
+
   if (pointers.size === 0){
     gesture.mode = null;
-    mapContainer.style.touchAction = 'pan-y pinch-zoom';
+    setMapTouchAction();
   }
-}, { passive:false, capture:true });
+}
+
+mapContainer.addEventListener('pointerup', endPointer, { passive:false, capture:true });
+mapContainer.addEventListener('pointercancel', endPointer, { passive:false, capture:true });
 
 mapInner.addEventListener('wheel', (e) => {
   if (isCoordMode) return;
