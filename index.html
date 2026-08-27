@@ -66,7 +66,7 @@ textarea{
   position:relative; width:100%; max-width:100%;
   user-select:none; -webkit-user-select:none;
   /* スマホのピンチ開始を殺さない */
-  touch-action: pan-y pinch-zoom;
+  touch-action: none;
   text-align:center;
 }
 #map-inner{ position:relative; display:inline-block; transform-origin:0 0; will-change:transform; }
@@ -222,6 +222,13 @@ const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /* -----------------------------
   Zoom / Pan
 ----------------------------- */
+
+["gesturestart", "gesturechange", "gestureend"].forEach(type => {
+  document.addEventListener(type, (e) => {
+    if (mapContainer.contains(e.target)) e.preventDefault();
+  }, { passive:false });
+});
+
 let view = { x: 0, y: 0, scale: 1 };
 const MIN_SCALE = 1, MAX_SCALE = 4;
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -247,15 +254,23 @@ let isCoordMode = false;
 mapContainer.addEventListener('pointerdown', (e) => {
   if (isCoordMode) return;
 
-  // まずは必ず記録（ここでreturnしない）
+  // 図面上の操作は常にページ側に渡さない（スクロール・ピンチズーム等を抑止）
+  e.preventDefault();
+
   pointers.set(e.pointerId, e);
+  mapContainer.setPointerCapture(e.pointerId);
 
-  // 2本指が揃ったらピンチ開始（ここで初めて preventDefault）
+  if (pointers.size === 1){
+    gesture.mode = "pan";
+    gesture.startX = e.clientX;
+    gesture.startY = e.clientY;
+    gesture.startViewX = view.x;
+    gesture.startViewY = view.y;
+    gesture.moved = false;
+    return;
+  }
+
   if (pointers.size === 2){
-    e.preventDefault();
-    mapContainer.style.touchAction = 'none';
-    mapContainer.setPointerCapture(e.pointerId);
-
     const arr = Array.from(pointers.values());
     gesture.mode = "pinch";
     gesture.startDist = dist(arr[0], arr[1]);
@@ -265,27 +280,7 @@ mapContainer.addEventListener('pointerdown', (e) => {
     const cx = (arr[0].clientX + arr[1].clientX) / 2;
     const cy = (arr[0].clientY + arr[1].clientY) / 2;
     gesture.centerLocal = localPointFromClient(cx, cy);
-    return;
   }
-
-  // 1本指のとき：等倍はスクロール優先、拡大中 or マウスはパン優先
-  const isTouchLike = (e.pointerType === 'touch' || e.pointerType === 'pen');
-  const allowPanNow = !isTouchLike || view.scale > 1.0001;
-
-  if (allowPanNow){
-    e.preventDefault();
-    mapContainer.style.touchAction = 'none';
-    mapContainer.setPointerCapture(e.pointerId);
-  } else {
-    mapContainer.style.touchAction = 'pan-y pinch-zoom';
-  }
-
-  gesture.mode = "pan";
-  gesture.startX = e.clientX;
-  gesture.startY = e.clientY;
-  gesture.startViewX = view.x;
-  gesture.startViewY = view.y;
-  gesture.moved = false;
 }, { passive:false, capture:true });
 
 mapContainer.addEventListener('pointermove', (e) => {
