@@ -1,235 +1,172 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8" />
+<meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>倉庫収納物管理マップ</title>
 <style>
+:root{
+  --bg:#f4f6f8; --card:#fff; --text:#333; --muted:#666;
+  --blue:#007bff; --blue2:#0069d9; --shadow:0 2px 4px rgba(0,0,0,.05);
+}
+*{ box-sizing:border-box; }
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  margin:20px; background:var(--bg); color:var(--text);
+}
+h1{ font-size:1.5rem; margin:0 0 15px; }
 
 .form-button{
-  display:inline-flex;
-  align-items:center;
-  justify-content:center;
-  padding:10px 16px;
-  border-radius:8px;
-  background:#007bff;
-  color:#fff;
-  border:1px solid #0069d9;
-  text-decoration:none;
-  font-size:1rem;
-  font-weight:700;
+  display:inline-flex; align-items:center; justify-content:center;
+  padding:10px 16px; border-radius:8px;
+  background:var(--blue); color:#fff; border:1px solid var(--blue2);
+  text-decoration:none; font-size:1rem; font-weight:700;
+  cursor:pointer; transition:filter .2s, transform .02s;
+  margin:0 0 15px;
+}
+.form-button:hover{ filter:brightness(.95); }
+.form-button:active{ transform:translateY(1px); }
+.form-button:focus-visible{ outline:3px solid rgba(0,123,255,.35); outline-offset:2px; }
+
+.controls-container{ display:flex; flex-wrap:wrap; gap:20px; margin:0 0 20px; }
+.control-panel{
+  background:var(--card); padding:15px; border-radius:8px; box-shadow:var(--shadow);
+  flex:1; min-width:0;
+}
+.control-title{ font-size:1rem; font-weight:700; margin:0 0 10px; color:#555; }
+.search-row{ display:flex; gap:8px; flex-wrap:wrap; }
+input[type="text"]{
+  flex:1 1 220px; padding:8px 10px; font-size:1rem;
+  border:1px solid #ccc; border-radius:4px;
+}
+select{
+  width:100%; padding:8px 10px; font-size:1rem;
+  border:1px solid #ccc; border-radius:4px; background:#fff;
+}
+.select-row{ margin-top:10px; }
+button{
+  padding:8px 15px; font-size:1rem; cursor:pointer;
+  border:1px solid #ccc; background:#f9f9f9; border-radius:4px;
+  transition:background-color .2s;
+}
+button:hover{ background:#eee; }
+#btn-search{ background:var(--blue); color:#fff; border-color:var(--blue2); }
+#btn-search:hover{ background:#0062cc; }
+.helper-text{ font-size:.85rem; color:var(--muted); margin-top:5px; }
+button.active{ background:#ffe0e0; border-color:#ff4d4d; color:#c00; font-weight:700; }
+
+#coord-area{ display:none; margin-top:10px; }
+textarea{
+  width:100%; font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;
+  padding:10px; border-radius:4px; border:1px solid #ccc; resize:vertical;
+}
+
+.map-wrapper{ background:var(--card); padding:10px; border-radius:8px; box-shadow:var(--shadow); overflow:hidden; }
+#map-container{
+  position:relative; width:100%; max-width:100%;
+  user-select:none; -webkit-user-select:none;
+  touch-action:pan-y; /* 等倍時のページスクロールを優先 */
+  text-align:center;
+}
+#map-inner{ position:relative; display:inline-block; transform-origin:0 0; will-change:transform; }
+#bg-img{
+  display:block; width:100%; height:auto; border:1px solid #ddd; background:#eee;
+  -webkit-user-drag:none; user-drag:none;
+}
+@media (min-width:768px){ #map-inner{ margin-left:40px; } }
+
+.shelf-area{
+  position:absolute;
+  background:rgba(0,123,255,.2);
+  border:1px solid rgba(0,123,255,.6);
   cursor:pointer;
-  transition:filter 0.2s, transform 0.02s;
-  margin: 0 0 15px 0;
+  transition:background-color .2s, border-color .2s;
+}
+.shelf-area:hover{ background:rgba(0,123,255,.5); }
+.shelf-area.highlight-red{
+  background:rgba(255,0,0,.4);
+  border-color:rgba(255,0,0,.8);
+  z-index:10;
+}
+.shelf-area.highlight-red:hover{ background:rgba(255,0,0,.6); }
+.coord-mode .shelf-area{
+  pointer-events:none;
+  background:rgba(150,150,150,.2);
+  border-color:rgba(150,150,150,.5);
 }
 
-.form-button:hover{
-  filter:brightness(0.95);
+#selection-box{
+  display:none; position:absolute;
+  border:2px dashed #ff4d4d; background:rgba(255,77,77,.2);
+  pointer-events:none;
 }
-
-.form-button:active{
-  transform:translateY(1px);
+#tooltip{
+  display:none; position:absolute; z-index:1000;
+  background:rgba(255,255,255,.95); border:1px solid #999;
+  padding:10px 15px; border-radius:4px;
+  font-size:14px; line-height:1.5; color:#333;
+  pointer-events:none; box-shadow:0 4px 8px rgba(0,0,0,.15);
+  white-space:nowrap;
 }
-
-.form-button:focus-visible{
-  outline:3px solid rgba(0,123,255,0.35);
-  outline-offset:2px;
+.highlight-text{ color:red; font-weight:700; }
+@media (max-width:600px){
+  body{ margin:10px; }
+  .controls-container{ flex-direction:column; gap:12px; }
+  #tooltip{ white-space:normal; max-width:80vw; font-size:13px; }
 }
-
-  body{
-    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
-    margin:20px;
-    background-color:#f4f6f8;
-    color:#333;
-  }
-  h1{ font-size:1.5rem; margin-bottom:15px; }
-
-  .controls-container{ display:flex; flex-wrap:wrap; gap:20px; margin-bottom:20px; }
-  .control-panel{
-    background:#fff; padding:15px; border-radius:8px;
-    box-shadow:0 2px 4px rgba(0,0,0,0.05);
-    flex:1;
-    min-width: 0;
-  }
-  .control-title{ font-size:1rem; font-weight:bold; margin-bottom:10px; color:#555; }
-
-  .search-row{ display:flex; gap:8px; flex-wrap:wrap; }
-  input[type="text"]{
-    flex: 1 1 220px;
-    padding:8px 10px; font-size:1rem;
-    border:1px solid #ccc; border-radius:4px;
-  }
-  select{
-    width:100%;
-    padding:8px 10px; font-size:1rem;
-    border:1px solid #ccc; border-radius:4px;
-    background:#fff;
-    box-sizing:border-box;
-  }
-  .select-row{ margin-top:10px; }
-
-  button{
-    padding:8px 15px; font-size:1rem; cursor:pointer;
-    border:1px solid #ccc; background-color:#f9f9f9; border-radius:4px;
-    transition:all 0.2s;
-  }
-  button:hover{ background-color:#eee; }
-  #btn-search{ background-color:#007bff; color:#fff; border-color:#0069d9; }
-  #btn-search:hover{ background-color:#0062cc; }
-  .helper-text{ font-size:0.85rem; color:#666; margin-top:5px; }
-
-  button.active{ background-color:#ffe0e0; border-color:#ff4d4d; color:#cc0000; font-weight:bold; }
-  #coord-area{ display:none; margin-top:10px; }
-  textarea{
-    width:100%; font-family:monospace; padding:10px; border-radius:4px;
-    border:1px solid #ccc; resize:vertical; box-sizing:border-box;
-  }
-
-  .map-wrapper{
-    background:#fff;
-    padding:10px;
-    border-radius:8px;
-    box-shadow:0 2px 4px rgba(0,0,0,0.05);
-    overflow: hidden;
-  }
-
-  #map-container{
-    position:relative;
-    width:100%;
-    max-width:100%;
-    user-select:none;
-    -webkit-user-select:none;
-    touch-action:none;
-  }
-
-  #map-inner{
-    position:relative;
-    display:inline-block;
-    transform-origin:0 0;
-    will-change:transform;
-  }
-
-  #bg-img{
-    display:block;
-    width:100%;
-    height:auto;
-    min-width:0;
-    border:1px solid #ddd;
-    background:#eee;
-  }
-
-  .shelf-area{
-    position:absolute;
-    background-color:rgba(0,123,255,0.2);
-    border:1px solid rgba(0,123,255,0.6);
-    cursor:pointer;
-    transition:background-color 0.2s, border-color 0.2s;
-  }
-  .shelf-area:hover{ background-color:rgba(0,123,255,0.5); }
-
-  .shelf-area.highlight-red{
-    background-color:rgba(255,0,0,0.4);
-    border-color:rgba(255,0,0,0.8);
-    z-index:10;
-  }
-  .shelf-area.highlight-red:hover{ background-color:rgba(255,0,0,0.6); }
-
-  .coord-mode .shelf-area{
-    pointer-events:none;
-    background-color:rgba(150,150,150,0.2);
-    border-color:rgba(150,150,150,0.5);
-  }
-
-  #selection-box{
-    display:none;
-    position:absolute;
-    border:2px dashed #ff4d4d;
-    background:rgba(255,77,77,0.2);
-    pointer-events:none;
-  }
-
-  #tooltip{
-    display:none;
-    position:absolute;
-    background-color:rgba(255,255,255,0.95);
-    border:1px solid #999;
-    padding:10px 15px;
-    border-radius:4px;
-    font-size:14px;
-    line-height:1.5;
-    color:#333;
-    pointer-events:none;
-    box-shadow:0 4px 8px rgba(0,0,0,0.15);
-    z-index:1000;
-    white-space:nowrap;
-  }
-  .highlight-text{ color:red; font-weight:bold; }
-
-  @media (max-width:600px){
-    body{ margin:10px; }
-    .controls-container{ flex-direction:column; gap:12px; }
-    #tooltip{ white-space:normal; max-width:80vw; font-size:13px; }
-  }
 </style>
 </head>
 
 <body>
-  <h1>倉庫収納物管理マップ</h1>
+<h1>倉庫収納物管理マップ</h1>
 
-<a
-  class="form-button"
-  href="https://forms.gle/Hv3VR8cjrpyWa3oM7"
-  target="_blank"
-  rel="noopener noreferrer"
->
+<a class="form-button" href="https://forms.gle/Hv3VR8cjrpyWa3oM7" target="_blank" rel="noopener noreferrer">
   持ち出し管理はこちら
 </a>
 
-  <div class="controls-container">
-    <div class="control-panel">
-      <div class="control-title">収納物検索</div>
-
-      <div class="search-row">
-        <input type="text" id="search-input" placeholder="例：カラーコーン">
-        <button id="btn-search">検索</button>
-        <button id="btn-reset">リセット</button>
-      </div>
-      <div class="helper-text">カタカナは全角、英字は半角で入力してください。</div>
-
-      <!-- 追加：リスト選択 -->
-      <div class="select-row">
-        <div class="helper-text" style="margin-top:10px;">リストから選択しても対象範囲を赤くできます。</div>
-        <select id="item-select">
-          <option value="">（リストから選択）</option>
-        </select>
-      </div>
+<div class="controls-container">
+  <div class="control-panel">
+    <div class="control-title">収納物検索</div>
+    <div class="search-row">
+      <input type="text" id="search-input" placeholder="例：カラーコーン">
+      <button id="btn-search">検索</button>
+      <button id="btn-reset">リセット</button>
     </div>
+    <div class="helper-text">カタカナは全角、英字は半角で入力してください。</div>
 
-    <div class="control-panel">
-      <div class="control-title">管理者メニュー</div>
-      <button id="toggle-coord-mode">座標取得モード：OFF</button>
-      <div class="helper-text">ONにすると、図面上をドラッグして追加する棚の座標を取得できます。</div>
-      <div id="coord-area">
-        <textarea id="coord-output" rows="3" placeholder="ドラッグした範囲のデータがここに出力されます。"></textarea>
-      </div>
+    <div class="select-row">
+      <div class="helper-text" style="margin-top:10px;">リストから選択しても対象範囲を赤くできます。</div>
+      <select id="item-select">
+        <option value="">（リストから選択）</option>
+      </select>
     </div>
   </div>
 
-  <div class="map-wrapper">
-    <div id="map-container">
-      <div id="map-inner">
-        <img src="./souko_m.jpg" id="bg-img" alt="倉庫図面" />
-        <div id="selection-box"></div>
-      </div>
+  <div class="control-panel">
+    <div class="control-title">管理者メニュー</div>
+    <button id="toggle-coord-mode">座標取得モード：OFF</button>
+    <div class="helper-text">ONにすると、図面上をドラッグして追加する棚の座標を取得できます。</div>
+    <div id="coord-area">
+      <textarea id="coord-output" rows="3" placeholder="ドラッグした範囲のデータがここに出力されます。"></textarea>
     </div>
   </div>
+</div>
 
-  <div id="tooltip"></div>
+<div class="map-wrapper">
+  <div id="map-container">
+    <div id="map-inner">
+      <img src="./souko_m.jpg" id="bg-img" alt="倉庫図面" draggable="false" />
+      <div id="selection-box"></div>
+    </div>
+  </div>
+</div>
+
+<div id="tooltip"></div>
 
 <script>
-/* =========================
-   棚データ（そのまま）
-   ========================= */
+/* -----------------------------
+  棚データ（元のまま）
+----------------------------- */
 const shelfData = [
   { top: 16.59, left: 51.63, width: 6.38, height: 14.04, items: ["1段目: 矢印板(矢印看板)、スポットクーラー、扇風機","2段目: マンホール換気扇(送風機)、通気マスク、水中ポンプ、小型エアコン","3段目: ロープ、トンバッグ"] },
   { top: 16.59, left: 45.41, width: 6.38, height: 14.04, items: ["1段目: カラーコーン(セーフティコーン)、MAKITA一輪車、テーブル","2段目: 矢印板(矢印看板)、旗、コーン用ライト、ゴムマット、誘導棒","3段目: LEDチューブライト、安全掲示板","4段目: 養生シート(青)"] },
@@ -265,98 +202,74 @@ const shelfData = [
   { top: 45.16, left: 70.14, width: 4.04, height: 9.90, items: ["1段目: ウエス","2段目: スプレー缶","3段目: テープ類(ビニル、エフコ、養生)","上段: アルコール、雑材"] }
 ];
 
-/* =========================
-   DOM
-   ========================= */
-const mapContainer = document.getElementById('map-container');
-const mapInner = document.getElementById('map-inner');
-const tooltip = document.getElementById('tooltip');
-const selectionBox = document.getElementById('selection-box');
-const coordOutput = document.getElementById('coord-output');
-const btnCoordMode = document.getElementById('toggle-coord-mode');
-const coordArea = document.getElementById('coord-area');
+/* -----------------------------
+  DOM helpers
+----------------------------- */
+const $ = (s, r=document) => r.querySelector(s);
+const mapContainer = $('#map-container');
+const mapInner = $('#map-inner');
+const tooltip = $('#tooltip');
+const selectionBox = $('#selection-box');
+const coordOutput = $('#coord-output');
+const btnCoordMode = $('#toggle-coord-mode');
+const coordArea = $('#coord-area');
+const searchInput = $('#search-input');
+const itemSelect = $('#item-select');
 
-const searchInput = document.getElementById('search-input');
-const btnSearch = document.getElementById('btn-search');
-const btnReset = document.getElementById('btn-reset');
-const itemSelect = document.getElementById('item-select');
+const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-function escapeRegExp(string){
-  return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-}
-
-/* =========================
-   ピンチズーム＋パン
-   ========================= */
+/* -----------------------------
+  Zoom / Pan
+----------------------------- */
 let view = { x: 0, y: 0, scale: 1 };
-const MIN_SCALE = 1;
-const MAX_SCALE = 4;
+const MIN_SCALE = 1, MAX_SCALE = 4;
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const applyTransform = () => (mapInner.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`);
 
-function applyTransform(){
-  mapInner.style.transform = `translate(${view.x}px, ${view.y}px) scale(${view.scale})`;
-}
-function clampScale(s){
-  return Math.max(MIN_SCALE, Math.min(MAX_SCALE, s));
-}
-function dist(a,b){
-  const dx = a.clientX - b.clientX;
-  const dy = a.clientY - b.clientY;
-  return Math.hypot(dx, dy);
-}
-function localPointFromClient(clientX, clientY){
-  const r = mapContainer.getBoundingClientRect();
-  return { x: clientX - r.left, y: clientY - r.top };
-}
+const localPointFromClient = (clientX, clientY) => {
+  const cr = mapContainer.getBoundingClientRect();
+  return { x:(clientX - cr.left) - mapInner.offsetLeft, y:(clientY - cr.top) - mapInner.offsetTop };
+};
+const contentPointFromClient = (clientX, clientY) => {
+  const p = localPointFromClient(clientX, clientY);
+  return { x:(p.x - view.x) / view.scale, y:(p.y - view.y) / view.scale };
+};
+const dist = (a,b) => Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
 
 const pointers = new Map();
-let gesture = {
-  mode: null,
-  startX: 0, startY: 0,
-  startViewX: 0, startViewY: 0,
-  startDist: 0,
-  startScale: 1,
-  centerLocal: { x: 0, y: 0 },
-  moved: false
-};
+let gesture = { mode:null, startX:0, startY:0, startViewX:0, startViewY:0, startDist:0, startScale:1, centerLocal:{x:0,y:0}, moved:false };
 const TAP_MOVE_THRESHOLD = 6;
+
+let isCoordMode = false;
 
 mapContainer.addEventListener('pointerdown', (e) => {
   if (isCoordMode) return;
 
+  const isTouchLike = (e.pointerType === 'touch' || e.pointerType === 'pen');
+  if (isTouchLike && view.scale <= 1.0001) return; // 等倍はスクロール優先
+
+  e.preventDefault();
   pointers.set(e.pointerId, e);
   mapContainer.setPointerCapture(e.pointerId);
 
   if (pointers.size === 1){
-    gesture.mode = "pan";
-    gesture.startX = e.clientX;
-    gesture.startY = e.clientY;
-    gesture.startViewX = view.x;
-    gesture.startViewY = view.y;
-    gesture.moved = false;
+    gesture = { ...gesture, mode:"pan", startX:e.clientX, startY:e.clientY, startViewX:view.x, startViewY:view.y, moved:false };
   } else if (pointers.size === 2){
-    const arr = Array.from(pointers.values());
-    gesture.mode = "pinch";
-    gesture.startDist = dist(arr[0], arr[1]);
-    gesture.startScale = view.scale;
-    gesture.moved = false;
-
-    const cx = (arr[0].clientX + arr[1].clientX) / 2;
-    const cy = (arr[0].clientY + arr[1].clientY) / 2;
-    gesture.centerLocal = localPointFromClient(cx, cy);
+    const [p0,p1] = [...pointers.values()];
+    const cx = (p0.clientX + p1.clientX) / 2;
+    const cy = (p0.clientY + p1.clientY) / 2;
+    gesture = { ...gesture, mode:"pinch", startDist:dist(p0,p1), startScale:view.scale, centerLocal:localPointFromClient(cx,cy), moved:false };
   }
-}, { passive:false });
+}, { passive:false, capture:true });
 
 mapContainer.addEventListener('pointermove', (e) => {
-  if (isCoordMode) return;
-  if (!pointers.has(e.pointerId)) return;
-
+  if (isCoordMode || !pointers.has(e.pointerId)) return;
   pointers.set(e.pointerId, e);
 
   if (pointers.size === 1 && gesture.mode === "pan"){
     const dx = e.clientX - gesture.startX;
     const dy = e.clientY - gesture.startY;
     if (Math.abs(dx) + Math.abs(dy) > TAP_MOVE_THRESHOLD) gesture.moved = true;
-
     view.x = gesture.startViewX + dx;
     view.y = gesture.startViewY + dy;
     applyTransform();
@@ -364,89 +277,79 @@ mapContainer.addEventListener('pointermove', (e) => {
   }
 
   if (pointers.size === 2 && gesture.mode === "pinch"){
-    const arr = Array.from(pointers.values());
-    const d = dist(arr[0], arr[1]);
+    const [p0,p1] = [...pointers.values()];
+    const d = dist(p0,p1);
     if (d <= 0) return;
 
     const before = view.scale;
-    let newScale = clampScale(gesture.startScale * (d / gesture.startDist));
+    const newScale = clamp(gesture.startScale * (d / gesture.startDist), MIN_SCALE, MAX_SCALE);
     if (Math.abs(newScale - before) > 0.001) gesture.moved = true;
 
-    const cx = gesture.centerLocal.x;
-    const cy = gesture.centerLocal.y;
-    const scaleRatio = newScale / before;
-
-    view.x = cx - (cx - view.x) * scaleRatio;
-    view.y = cy - (cy - view.y) * scaleRatio;
+    const { x:cx, y:cy } = gesture.centerLocal;
+    const ratio = newScale / before;
+    view.x = cx - (cx - view.x) * ratio;
+    view.y = cy - (cy - view.y) * ratio;
     view.scale = newScale;
-
     applyTransform();
   }
-}, { passive:false });
+}, { passive:false, capture:true });
 
-mapContainer.addEventListener('pointerup', (e) => {
+const endPointer = (e) => {
   pointers.delete(e.pointerId);
-  if (pointers.size === 0) gesture.mode = null;
-});
-mapContainer.addEventListener('pointercancel', (e) => {
-  pointers.delete(e.pointerId);
-  if (pointers.size === 0) gesture.mode = null;
-});
+  if (!pointers.size) gesture.mode = null;
+};
+mapContainer.addEventListener('pointerup', endPointer, { passive:false, capture:true });
+mapContainer.addEventListener('pointercancel', endPointer, { passive:false, capture:true });
 
-mapContainer.addEventListener('wheel', (e) => {
+mapInner.addEventListener('wheel', (e) => {
   if (isCoordMode) return;
   e.preventDefault();
 
-  const zoomFactor = (e.deltaY < 0) ? 1.08 : 0.92;
+  const zoomFactor = e.deltaY < 0 ? 1.08 : 0.92;
+  const newScale = clamp(view.scale * zoomFactor, MIN_SCALE, MAX_SCALE);
 
-  const p = localPointFromClient(e.clientX, e.clientY);
-  const before = view.scale;
-  const newScale = clampScale(view.scale * zoomFactor);
-  const ratio = newScale / before;
+  const pLocal = localPointFromClient(e.clientX, e.clientY);
+  const pContent = contentPointFromClient(e.clientX, e.clientY);
 
-  view.x = p.x - (p.x - view.x) * ratio;
-  view.y = p.y - (p.y - view.y) * ratio;
   view.scale = newScale;
-
+  view.x = pLocal.x - pContent.x * newScale;
+  view.y = pLocal.y - pContent.y * newScale;
   applyTransform();
-}, { passive:false });
+}, { passive:false, capture:true });
 
 applyTransform();
 
-/* =========================
-   棚（ツールチップ/検索）
-   ========================= */
+/* -----------------------------
+  Tooltip / Shelf render
+----------------------------- */
 let activeShelfEl = null;
 const shelfElements = [];
 
-// 棚以外をタップしたら閉じる
 document.addEventListener('pointerdown', () => {
   activeShelfEl = null;
   tooltip.style.display = 'none';
 });
 
-function buildTooltipHtml(items){
-  const keyword = searchInput.value.trim();
-  if (keyword){
-    const regex = new RegExp(`(${escapeRegExp(keyword)})`, 'g');
-    return items.map(t => t.replace(regex, '<span class="highlight-text">$1</span>')).join('<br>');
-  }
-  return items.join('<br>');
-}
-function showTooltipAt(pageX, pageY, items){
+const buildTooltipHtml = (items) => {
+  const k = searchInput.value.trim();
+  if (!k) return items.join('<br>');
+  const re = new RegExp(`(${escapeRegExp(k)})`, 'g');
+  return items.map(t => String(t).replace(re, '<span class="highlight-text">$1</span>')).join('<br>');
+};
+
+const showTooltipAt = (pageX, pageY, items) => {
   tooltip.innerHTML = buildTooltipHtml(items);
   tooltip.style.display = 'block';
   tooltip.style.left = (pageX + 15) + 'px';
   tooltip.style.top  = (pageY + 15) + 'px';
-}
+};
 
 shelfData.forEach(shelf => {
   const el = document.createElement('div');
   el.className = 'shelf-area';
-  el.style.top = shelf.top + "%";
-  el.style.left = shelf.left + "%";
-  el.style.width = shelf.width + "%";
-  el.style.height = shelf.height + "%";
+  Object.assign(el.style, {
+    top: shelf.top + "%", left: shelf.left + "%", width: shelf.width + "%", height: shelf.height + "%"
+  });
 
   el.addEventListener('mouseenter', () => {
     tooltip.innerHTML = buildTooltipHtml(shelf.items);
@@ -454,16 +357,14 @@ shelfData.forEach(shelf => {
   });
   el.addEventListener('mousemove', (e) => {
     tooltip.style.left = (e.pageX + 15) + 'px';
-    tooltip.style.top = (e.pageY + 15) + 'px';
+    tooltip.style.top  = (e.pageY + 15) + 'px';
   });
   el.addEventListener('mouseleave', () => {
     if (activeShelfEl !== el) tooltip.style.display = 'none';
   });
 
   el.addEventListener('pointerdown', (e) => {
-    if (isCoordMode) return;
-    if (gesture.moved) return;
-
+    if (isCoordMode || gesture.moved) return;
     e.preventDefault();
     e.stopPropagation();
 
@@ -472,7 +373,6 @@ shelfData.forEach(shelf => {
       tooltip.style.display = 'none';
       return;
     }
-
     activeShelfEl = el;
     const pageX = e.pageX ?? (e.clientX + window.scrollX);
     const pageY = e.pageY ?? (e.clientY + window.scrollY);
@@ -480,144 +380,77 @@ shelfData.forEach(shelf => {
   }, { passive:false });
 
   mapInner.appendChild(el);
-  shelfElements.push({ data: shelf, element: el });
+  shelfElements.push({ data:shelf, element:el });
 });
 
-/* =========================
-   追加：リスト作成（棚データから物品名候補を抽出）
-   - 「1段目: ...」の「...」を取り出し
-   - 「、」「,」で分割
-   - かっこ書きは削除（例：矢印板(矢印看板) → 矢印板）
-   ========================= */
-function normalizeItemName(name){
-  return name
-    .replace(/（[^）]*）/g, '')
-    .replace(/$$[^)]*$$/g, '')
-    .replace(/：/g, ':')
-    .trim();
-}
-
-function extractItemCandidates(){
-  const set = new Set();
-
-  shelfData.forEach(shelf => {
-    shelf.items.forEach(line => {
-      let s = String(line);
-
-      // "1段目: xxx" の "xxx" を優先（なければ全文）
-      if (s.includes(':')) s = s.split(':').slice(1).join(':');
-
-      // 分割（全角/半角カンマ）
-      s.split(/[、,]/g).forEach(part => {
-        const n = normalizeItemName(part);
-        if (!n) return;
-        set.add(n);
-      });
-    });
-  });
-
-  return Array.from(set).sort((a,b) => a.localeCompare(b, 'ja'));
-}
-
-function populateItemSelect(){
-  const items = [
-    "セーフティコーン",
-    "コーンバー",
-    "矢印板",
-    "発電機",
-    "除雪機",
-    "脚立",
-    "レーザー墨出機",
-    "ガス検知器",
-    "マンホール換気扇(送風機)",
-    "通気マスク",
-    "水中ポンプ",
-    "エンジンポンプ",
-    "絶縁工具",
-    "スポットクーラー",
-    "扇風機",
-    "養生シート",
-    "LEDライト",
-    "長尺物",
-    // 必要に応じてアイテム追加
-  ];
-  items.forEach(name => {
-    const opt = document.createElement('option');
-    opt.value = name;
-    opt.textContent = name;
-    itemSelect.appendChild(opt);
-  });
-}
-populateItemSelect();
-
-/* =========================
-   検索/ハイライト（検索欄とリスト選択で共通化）
-   ========================= */
-function highlightByKeyword(keyword){
+/* -----------------------------
+  Search / Highlight
+----------------------------- */
+const highlightByKeyword = (keyword) => {
   const k = (keyword ?? '').trim();
-
-  if (!k){
-    shelfElements.forEach(item => item.element.classList.remove('highlight-red'));
-    return;
-  }
-
-  shelfElements.forEach(item => {
-    const hit = item.data.items.some(text => String(text).includes(k));
-    if (hit) item.element.classList.add('highlight-red');
-    else item.element.classList.remove('highlight-red');
+  shelfElements.forEach(({data, element}) => {
+    const hit = k && data.items.some(t => String(t).includes(k));
+    element.classList.toggle('highlight-red', !!hit);
   });
-}
+};
 
-function performSearch(){
-  const keyword = searchInput.value.trim();
-  if (!keyword){ resetSearch(); return; }
-  // 入力検索したら、リスト側は未選択に戻す（競合防止）
-  itemSelect.value = "";
-  highlightByKeyword(keyword);
-}
-
-function resetSearch(){
+const resetSearch = () => {
   searchInput.value = '';
   itemSelect.value = '';
   highlightByKeyword('');
-}
+};
 
-btnSearch.addEventListener('click', performSearch);
-searchInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') performSearch(); });
-btnReset.addEventListener('click', resetSearch);
+const performSearch = () => {
+  const k = searchInput.value.trim();
+  if (!k) return resetSearch();
+  itemSelect.value = '';
+  highlightByKeyword(k);
+};
 
-// 追加：リストから選択 → 対象棚を赤く
+$('#btn-search').addEventListener('click', performSearch);
+$('#btn-reset').addEventListener('click', resetSearch);
+searchInput.addEventListener('keydown', (e) => (e.key === 'Enter') && performSearch());
+
+/* リスト（元の固定候補を維持） */
+[
+  "セーフティコーン","コーンバー","矢印板","発電機","除雪機","脚立","レーザー墨出機","ガス検知器",
+  "マンホール換気扇(送風機)","通気マスク","水中ポンプ","エンジンポンプ","絶縁工具","スポットクーラー",
+  "扇風機","養生シート","LEDライト","長尺物",
+].forEach(name => {
+  const opt = document.createElement('option');
+  opt.value = name; opt.textContent = name;
+  itemSelect.appendChild(opt);
+});
+
 itemSelect.addEventListener('change', () => {
   const v = itemSelect.value;
-  // リストで選んだものは検索欄にも反映（ツールチップの赤文字強調にも効く）
   searchInput.value = v;
   highlightByKeyword(v);
 });
 
-/* =========================
-   座標取得（※ON時に等倍に戻す運用）
-   ========================= */
-let isCoordMode = false;
+/* -----------------------------
+  Coord mode
+----------------------------- */
 let isDragging = false;
-let startX, startY;
+let startX = 0, startY = 0;
 
-btnCoordMode.addEventListener('click', function(){
+btnCoordMode.addEventListener('click', () => {
   isCoordMode = !isCoordMode;
 
   if (isCoordMode){
-    view = { x: 0, y: 0, scale: 1 };
+    view = { x:0, y:0, scale:1 };
     applyTransform();
 
-    this.innerText = "座標取得モード：ON";
-    this.classList.add('active');
+    btnCoordMode.textContent = "座標取得モード：ON";
+    btnCoordMode.classList.add('active');
     mapContainer.classList.add('coord-mode');
     mapContainer.style.cursor = "crosshair";
     coordArea.style.display = "block";
     tooltip.style.display = "none";
     activeShelfEl = null;
   } else {
-    this.innerText = "座標取得モード：OFF";
-    this.classList.remove('active');
+    btnCoordMode.textContent = "座標取得モード：OFF";
+    btnCoordMode.classList.remove('active');
     mapContainer.classList.remove('coord-mode');
     mapContainer.style.cursor = "default";
     selectionBox.style.display = "none";
@@ -625,7 +458,7 @@ btnCoordMode.addEventListener('click', function(){
   }
 });
 
-mapInner.addEventListener('mousedown', function(e){
+mapInner.addEventListener('mousedown', (e) => {
   if (!isCoordMode) return;
   e.preventDefault();
 
@@ -634,48 +467,44 @@ mapInner.addEventListener('mousedown', function(e){
   startY = e.clientY - rect.top;
   isDragging = true;
 
-  selectionBox.style.left = (startX / rect.width * 100) + "%";
-  selectionBox.style.top  = (startY / rect.height * 100) + "%";
-  selectionBox.style.width = "0%";
-  selectionBox.style.height = "0%";
-  selectionBox.style.display = "block";
+  selectionBox.style.cssText = `
+    display:block;
+    left:${(startX/rect.width*100)}%;
+    top:${(startY/rect.height*100)}%;
+    width:0%;
+    height:0%;
+  `;
 });
 
-window.addEventListener('mousemove', function(e){
+window.addEventListener('mousemove', (e) => {
   if (!isDragging) return;
-
   const rect = mapInner.getBoundingClientRect();
-  let currentX = e.clientX - rect.left;
-  let currentY = e.clientY - rect.top;
 
-  currentX = Math.max(0, Math.min(currentX, rect.width));
-  currentY = Math.max(0, Math.min(currentY, rect.height));
+  const curX = clamp(e.clientX - rect.left, 0, rect.width);
+  const curY = clamp(e.clientY - rect.top, 0, rect.height);
 
-  const left = Math.min(startX, currentX);
-  const top = Math.min(startY, currentY);
-  const width = Math.abs(currentX - startX);
-  const height = Math.abs(currentY - startY);
+  const left = Math.min(startX, curX);
+  const top  = Math.min(startY, curY);
+  const w = Math.abs(curX - startX);
+  const h = Math.abs(curY - startY);
 
   selectionBox.style.left = (left / rect.width * 100) + "%";
-  selectionBox.style.top  = (top / rect.height * 100) + "%";
-  selectionBox.style.width = (width / rect.width * 100) + "%";
-  selectionBox.style.height = (height / rect.height * 100) + "%";
+  selectionBox.style.top  = (top  / rect.height * 100) + "%";
+  selectionBox.style.width  = (w / rect.width * 100) + "%";
+  selectionBox.style.height = (h / rect.height * 100) + "%";
 });
 
-window.addEventListener('mouseup', function(e){
+window.addEventListener('mouseup', (e) => {
   if (!isDragging) return;
   isDragging = false;
 
   const rect = mapInner.getBoundingClientRect();
-  let endX = e.clientX - rect.left;
-  let endY = e.clientY - rect.top;
-
-  endX = Math.max(0, Math.min(endX, rect.width));
-  endY = Math.max(0, Math.min(endY, rect.height));
+  const endX = clamp(e.clientX - rect.left, 0, rect.width);
+  const endY = clamp(e.clientY - rect.top, 0, rect.height);
 
   const left = Math.min(startX, endX) / rect.width * 100;
-  const top = Math.min(startY, endY) / rect.height * 100;
-  const width = Math.abs(endX - startX) / rect.width * 100;
+  const top  = Math.min(startY, endY) / rect.height * 100;
+  const width  = Math.abs(endX - startX) / rect.width * 100;
   const height = Math.abs(endY - startY) / rect.height * 100;
 
   if (width > 0.5 && height > 0.5){
