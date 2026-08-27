@@ -65,7 +65,8 @@ textarea{
 #map-container{
   position:relative; width:100%; max-width:100%;
   user-select:none; -webkit-user-select:none;
-  touch-action:pan-y; /* 等倍時のページスクロールを優先 */
+  /* スマホのピンチ開始を殺さない */
+  touch-action: pan-y pinch-zoom;
   text-align:center;
 }
 #map-inner{ position:relative; display:inline-block; transform-origin:0 0; will-change:transform; }
@@ -242,24 +243,49 @@ const TAP_MOVE_THRESHOLD = 6;
 
 let isCoordMode = false;
 
+/* ★修正版：等倍でも pointer を拾い、2本指ピンチを必ず開始できる */
 mapContainer.addEventListener('pointerdown', (e) => {
   if (isCoordMode) return;
 
-  const isTouchLike = (e.pointerType === 'touch' || e.pointerType === 'pen');
-  if (isTouchLike && view.scale <= 1.0001) return; // 等倍はスクロール優先
-
-  e.preventDefault();
+  // まずは必ず記録（ここでreturnしない）
   pointers.set(e.pointerId, e);
-  mapContainer.setPointerCapture(e.pointerId);
 
-  if (pointers.size === 1){
-    gesture = { ...gesture, mode:"pan", startX:e.clientX, startY:e.clientY, startViewX:view.x, startViewY:view.y, moved:false };
-  } else if (pointers.size === 2){
-    const [p0,p1] = [...pointers.values()];
-    const cx = (p0.clientX + p1.clientX) / 2;
-    const cy = (p0.clientY + p1.clientY) / 2;
-    gesture = { ...gesture, mode:"pinch", startDist:dist(p0,p1), startScale:view.scale, centerLocal:localPointFromClient(cx,cy), moved:false };
+  // 2本指が揃ったらピンチ開始（ここで初めて preventDefault）
+  if (pointers.size === 2){
+    e.preventDefault();
+    mapContainer.style.touchAction = 'none';
+    mapContainer.setPointerCapture(e.pointerId);
+
+    const arr = Array.from(pointers.values());
+    gesture.mode = "pinch";
+    gesture.startDist = dist(arr[0], arr[1]);
+    gesture.startScale = view.scale;
+    gesture.moved = false;
+
+    const cx = (arr[0].clientX + arr[1].clientX) / 2;
+    const cy = (arr[0].clientY + arr[1].clientY) / 2;
+    gesture.centerLocal = localPointFromClient(cx, cy);
+    return;
   }
+
+  // 1本指のとき：等倍はスクロール優先、拡大中 or マウスはパン優先
+  const isTouchLike = (e.pointerType === 'touch' || e.pointerType === 'pen');
+  const allowPanNow = !isTouchLike || view.scale > 1.0001;
+
+  if (allowPanNow){
+    e.preventDefault();
+    mapContainer.style.touchAction = 'none';
+    mapContainer.setPointerCapture(e.pointerId);
+  } else {
+    mapContainer.style.touchAction = 'pan-y pinch-zoom';
+  }
+
+  gesture.mode = "pan";
+  gesture.startX = e.clientX;
+  gesture.startY = e.clientY;
+  gesture.startViewX = view.x;
+  gesture.startViewY = view.y;
+  gesture.moved = false;
 }, { passive:false, capture:true });
 
 mapContainer.addEventListener('pointermove', (e) => {
@@ -294,12 +320,22 @@ mapContainer.addEventListener('pointermove', (e) => {
   }
 }, { passive:false, capture:true });
 
-const endPointer = (e) => {
+/* ★修正版：指が全部離れたら touch-action を戻す */
+mapContainer.addEventListener('pointerup', (e) => {
   pointers.delete(e.pointerId);
-  if (!pointers.size) gesture.mode = null;
-};
-mapContainer.addEventListener('pointerup', endPointer, { passive:false, capture:true });
-mapContainer.addEventListener('pointercancel', endPointer, { passive:false, capture:true });
+  if (pointers.size === 0){
+    gesture.mode = null;
+    mapContainer.style.touchAction = 'pan-y pinch-zoom';
+  }
+}, { passive:false, capture:true });
+
+mapContainer.addEventListener('pointercancel', (e) => {
+  pointers.delete(e.pointerId);
+  if (pointers.size === 0){
+    gesture.mode = null;
+    mapContainer.style.touchAction = 'pan-y pinch-zoom';
+  }
+}, { passive:false, capture:true });
 
 mapInner.addEventListener('wheel', (e) => {
   if (isCoordMode) return;
@@ -411,7 +447,7 @@ $('#btn-search').addEventListener('click', performSearch);
 $('#btn-reset').addEventListener('click', resetSearch);
 searchInput.addEventListener('keydown', (e) => (e.key === 'Enter') && performSearch());
 
-/* リスト（元の固定候補を維持） */
+/* リスト（固定候補） */
 [
   "セーフティコーン","コーンバー","矢印板","発電機","除雪機","脚立","レーザー墨出機","ガス検知器",
   "マンホール換気扇(送風機)","通気マスク","水中ポンプ","エンジンポンプ","絶縁工具","スポットクーラー",
@@ -448,6 +484,9 @@ btnCoordMode.addEventListener('click', () => {
     coordArea.style.display = "block";
     tooltip.style.display = "none";
     activeShelfEl = null;
+
+    // 念のため coord mode 中は標準に戻す
+    mapContainer.style.touchAction = 'pan-y pinch-zoom';
   } else {
     btnCoordMode.textContent = "座標取得モード：OFF";
     btnCoordMode.classList.remove('active');
