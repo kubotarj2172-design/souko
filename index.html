@@ -242,7 +242,14 @@ const contentPointFromClient = (clientX, clientY) => {
 const dist = (a,b) => Math.hypot(a.clientX-b.clientX, a.clientY-b.clientY);
 
 const pointers = new Map();
-let gesture = { mode:null, startX:0, startY:0, startViewX:0, startViewY:0, startDist:0, startScale:1, centerLocal:{x:0,y:0}, moved:false };
+let gesture = {
+  mode:null,
+  startX:0, startY:0, startViewX:0, startViewY:0,
+  startDist:0, startScale:1,
+  pinchLocal:{x:0,y:0},
+  pinchContent:{x:0,y:0},
+  moved:false
+};
 const TAP_MOVE_THRESHOLD = 6;
 
 let isCoordMode = false;
@@ -279,7 +286,11 @@ mapContainer.addEventListener('pointerdown', (e) => {
 
     const cx = (p0.clientX + p1.clientX) / 2;
     const cy = (p0.clientY + p1.clientY) / 2;
-    gesture.centerLocal = localPointFromClient(cx, cy);
+
+    // ピンチ開始時点の「基準点」を固定で保存
+    gesture.pinchLocal  = localPointFromClient(cx, cy);      // コンテナ内のローカル座標
+    gesture.pinchContent = contentPointFromClient(cx, cy);   // 図面（コンテンツ）座標
+    
     return;
   }
 
@@ -317,19 +328,25 @@ mapContainer.addEventListener('pointermove', (e) => {
     const d = dist(p0, p1);
     if (d <= 0) return;
 
-    const before = view.scale;
-    const newScale = clamp(gesture.startScale * (d / gesture.startDist), MIN_SCALE, MAX_SCALE);
+const newScale = clamp(
+  gesture.startScale * (d / gesture.startDist),
+  MIN_SCALE,
+  MAX_SCALE
+);
 
-    const { x:cx, y:cy } = gesture.centerLocal;
-    const ratio = newScale / before;
+// ピンチ開始時点の基準点（固定）
+const L = gesture.pinchLocal;     // ローカル座標（コンテナ内の点）
+const C = gesture.pinchContent;   // コンテンツ座標（図面上の点）
 
-    view.x = cx - (cx - view.x) * ratio;
-    view.y = cy - (cy - view.y) * ratio;
-    view.scale = newScale;
+view.scale = newScale;
 
-    applyTransform();
-    setMapTouchAction(); // ここで >1x になったら以降は図面優先に切替
-    return;
+// L = view.(x,y) + C * scale となるように平行移動を計算
+view.x = L.x - C.x * newScale;
+view.y = L.y - C.y * newScale;
+
+applyTransform();
+setMapTouchAction();
+return;
   }
 
   // パン（※拡大中のみ）
